@@ -9,9 +9,25 @@ const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// Enhanced CORS for production
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://udyam-clone-frontend.vercel.app', // We'll update this later
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', '*'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all origins in development
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'X-Requested-With', 'Accept']
@@ -19,52 +35,24 @@ app.use(cors({
 
 app.use(express.json());
 
-// Handle preflight requests
-app.options('*', cors());
+// Trust proxy for Railway
+app.set('trust proxy', 1);
 
-// Add explicit headers middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
+// Add a root route for Railway health checks
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Udyam Registration Backend API',
+    status: 'OK',
+    endpoints: {
+      health: '/api/health',
+      schema: '/api/form-schema',
+      step1: '/api/submit-step1',
+      step2: '/api/submit-step2',
+      step3: '/api/submit-step3',
+      pincode: '/api/pincode/:pincode'
+    }
+  });
 });
-
-// Validation utilities
-const validateAadhaar = (aadhaar) => {
-  const aadhaarRegex = /^[0-9]{12}$/;
-  return aadhaarRegex.test(aadhaar);
-};
-
-const validatePAN = (pan) => {
-  const panRegex = /^[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}$/;
-  return panRegex.test(pan);
-};
-
-const validateOTP = (otp) => {
-  const otpRegex = /^[0-9]{6}$/;
-  return otpRegex.test(otp);
-};
-
-const validateMobile = (mobile) => {
-  const mobileRegex = /^[6-9][0-9]{9}$/;
-  return mobileRegex.test(mobile);
-};
-
-const validateEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
-const validatePincode = (pincode) => {
-  const pincodeRegex = /^[0-9]{6}$/;
-  return pincodeRegex.test(pincode);
-};
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -393,21 +381,52 @@ app.get('/api/pincode/:pincode', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
+// Just add enhanced error handling at the end
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error);
+  
+  res.status(500).json({
+    success: false,
+    message: process.env.NODE_ENV === 'production' 
+      ? 'Internal server error' 
+      : error.message
+  });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found'
+  });
+});
+
+// Start server with enhanced logging
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 API endpoints available at http://localhost:${PORT}/api`);
+  console.log(`📱 API endpoints available`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // Graceful shutdown
-process.on('beforeExit', async () => {
-  await prisma.$disconnect();
-});
-
-process.on('SIGINT', async () => {
+const shutdown = async () => {
   console.log('\n🔄 Shutting down gracefully...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+  
+  server.close(() => {
+    console.log('✅ HTTP server closed');
+  });
+  
+  try {
+    await prisma.$disconnect();
+    console.log('✅ Database connection closed');
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error during shutdown:', error);
+    process.exit(1);
+  }
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 module.exports = app;
