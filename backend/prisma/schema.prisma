@@ -1,0 +1,31 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UdyamUser {
+  id          Int      @id @default(autoincrement())
+  aadhaar     String   @unique
+  otp         String?
+  pan         String?
+  name        String?
+  mobile      String?
+  email       String?
+  pincode     String?
+  city        String?
+  state       String?
+  step        Int      @default(1)
+  isVerified  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("udyam_users")
+}
