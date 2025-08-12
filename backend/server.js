@@ -1,19 +1,21 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const { PrismaClient } = require('./generated/prisma');
+const { PrismaClient } = require('@prisma/client'); // ⚠️ Change this line
 
 dotenv.config();
 
 const app = express();
 const prisma = new PrismaClient();
-const PORT = process.env.PORT || 5000;
+
+// Render provides PORT via environment variable
+const PORT = process.env.PORT || 10000;
 
 // Enhanced CORS for production
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
-  'https://udyam-clone-frontend.vercel.app', // We'll update this later
+  'https://udyam-frontend.onrender.com', // Update with your frontend URL
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
@@ -25,7 +27,7 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
-      callback(null, true); // Allow all origins in development
+      callback(null, true); // Allow all origins during setup
     }
   },
   credentials: true,
@@ -35,28 +37,25 @@ app.use(cors({
 
 app.use(express.json());
 
-// Trust proxy for Railway
+// Trust proxy for Render
 app.set('trust proxy', 1);
 
-// Add a root route for Railway health checks
+// Health check endpoint (Render uses this)
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Udyam Registration Backend API',
     status: 'OK',
-    endpoints: {
-      health: '/api/health',
-      schema: '/api/form-schema',
-      step1: '/api/submit-step1',
-      step2: '/api/submit-step2',
-      step3: '/api/submit-step3',
-      pincode: '/api/pincode/:pincode'
-    }
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV
   });
 });
 
-// Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    port: PORT 
+  });
 });
 
 // Form schema endpoint
@@ -401,14 +400,14 @@ app.use('*', (req, res) => {
   });
 });
 
-// Start server with enhanced logging
+// Start server - bind to 0.0.0.0 for Render
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📱 API endpoints available`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
-// Graceful shutdown
+// Graceful shutdown for Render
 const shutdown = async () => {
   console.log('\n🔄 Shutting down gracefully...');
   
